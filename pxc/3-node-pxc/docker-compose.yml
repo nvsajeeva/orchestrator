@@ -1,0 +1,95 @@
+version: '2'
+services:
+
+  etcd_node:
+    image: quay.io/coreos/etcd:${ETCD_TAG}
+    container_name: ${COMPOSE_PROJECT_NAME}_etcd
+    networks:
+      pxc_network:
+    expose:
+      - "2379"
+      - "2380"
+      - "4001"
+    command: ["-name", "etcd0", "-advertise-client-urls", "http://127.0.0.1:2379,http://127.0.0.1:4001", "-listen-client-urls", "http://0.0.0.0:2379,http://0.0.0.0:4001", "-initial-advertise-peer-urls", "http://127.0.0.1:2380", "-listen-peer-urls", "http://0.0.0.0:2380", "-initial-cluster", "etcd0=http://127.0.0.1:2380", "-initial-cluster-token", "etcd-cluster-1", "-initial-cluster", "etcd0=http://127.0.0.1:2380", "-initial-cluster-state", "new"]
+
+  node01:
+    image: ${IMAGE}:${TAG}
+    container_name: ${COMPOSE_PROJECT_NAME}_node01
+    networks:
+      pxc_network:
+    environment:
+      #HOSTNAME: ${COMPOSE_PROJECT_NAME}_node01
+      CLUSTER_NAME: ${CLUSTER_NAME}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      XTRABACKUP_PASSWORD: ${XTRABACKUP_PASSWORD}
+      #CLUSTER_JOIN:
+      DISCOVERY_SERVICE: ${COMPOSE_PROJECT_NAME}_etcd:2379
+    depends_on:
+      - etcd_node
+    volumes:
+      - ./pxc_cnf_files/my.cnf.node01:/etc/mysql/conf.d/my.cnf
+
+  node02:
+    image: ${IMAGE}:${TAG}
+    container_name: ${COMPOSE_PROJECT_NAME}_node02
+    networks:
+      pxc_network:
+    environment:
+      CLUSTER_NAME: ${CLUSTER_NAME}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      XTRABACKUP_PASSWORD: ${XTRABACKUP_PASSWORD}
+      #CLUSTER_JOIN: ${COMPOSE_PROJECT_NAME}_node01
+      DISCOVERY_SERVICE: ${COMPOSE_PROJECT_NAME}_etcd:2379
+    depends_on:
+      - etcd_node
+      - node01
+    volumes:
+      - ./pxc_cnf_files/my.cnf.node02:/etc/mysql/conf.d/my.cnf
+
+  node03:
+    image: ${IMAGE}:${TAG}
+    container_name: ${COMPOSE_PROJECT_NAME}_node03
+    networks:
+      pxc_network:
+    environment:
+      CLUSTER_NAME: ${CLUSTER_NAME}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      XTRABACKUP_PASSWORD: ${XTRABACKUP_PASSWORD}
+      #CLUSTER_JOIN: ${COMPOSE_PROJECT_NAME}_node02
+      DISCOVERY_SERVICE: ${COMPOSE_PROJECT_NAME}_etcd:2379
+    depends_on:
+      - etcd_node
+      - node02
+    volumes:
+      - ./pxc_cnf_files/my.cnf.node03:/etc/mysql/conf.d/my.cnf
+
+  proxysql_node:
+    image: ${PROXYSQL_IMAGE}:${PROXYSQL_TAG}
+    container_name: ${COMPOSE_PROJECT_NAME}_proxysql
+    networks:
+      pxc_network:
+    ports:
+      - 6033
+      - 6032
+    environment:
+      CLUSTER_NAME: ${CLUSTER_NAME}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      #CLUSTER_JOIN: ${COMPOSE_PROJECT_NAME}_node02
+      DISCOVERY_SERVICE: ${COMPOSE_PROJECT_NAME}_etcd:2379
+      MYSQL_PROXY_USER: ${MYSQL_PROXY_USER}
+      MYSQL_PROXY_PASSWORD: ${MYSQL_PROXY_PASSWORD}
+    depends_on:
+      - etcd_node
+
+networks:
+  pxc_network:
+    driver: bridge
+
+
+# TESTING SECTION
+#volumes:
+#  small_docker_disk:
+#    external: true
+ 
+# under volumes section for each node add:
+#      - small_docker_disk:/mnt/sds
